@@ -378,7 +378,7 @@ export default function App() {
       <div className="bgGlow" aria-hidden="true" />
       <header className="header">
         <div>
-          <h1 className="title">Baobao's Calorie Tracker</h1>
+          <h1 className="title">Baobao's Calorie Tracker ❤️</h1>
           <div className="dateControls">
             <button
               type="button"
