@@ -10,7 +10,37 @@ const MEALS = [
 ];
 
 function isoDate(date) {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function dateFromISO(iso) {
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function addDays(iso, days) {
+  const d = dateFromISO(iso);
+  d.setDate(d.getDate() + days);
+  return isoDate(d);
+}
+
+function emptyDayEntries() {
+  return {
+    breakfast: [],
+    lunch: [],
+    dinner: [],
+  };
+}
+
+function normalizeDayEntries(day) {
+  return {
+    breakfast: Array.isArray(day?.breakfast) ? day.breakfast : [],
+    lunch: Array.isArray(day?.lunch) ? day.lunch : [],
+    dinner: Array.isArray(day?.dinner) ? day.dinner : [],
+  };
 }
 
 function getCurrentWeek(baseDate) {
@@ -34,6 +64,38 @@ function getCurrentWeek(baseDate) {
   });
 }
 
+function getCurrentMonthCells(baseDate) {
+  const year = baseDate.getFullYear();
+  const month = baseDate.getMonth();
+  const firstOfMonth = new Date(year, month, 1);
+  const leadingEmpty = firstOfMonth.getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = [];
+
+  for (let i = 0; i < leadingEmpty; i += 1) {
+    cells.push(null);
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const d = new Date(year, month, day);
+    cells.push({
+      iso: isoDate(d),
+      dayNumber: day,
+      fullLabel: d.toLocaleDateString(undefined, {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      }),
+    });
+  }
+
+  while (cells.length % 7 !== 0) {
+    cells.push(null);
+  }
+
+  return cells;
+}
+
 function uid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
 }
@@ -44,24 +106,47 @@ function clampCalories(value) {
   return Math.max(0, Math.round(n));
 }
 
+function normalizeStoredData(raw) {
+  const todayISO = isoDate(new Date());
+  const base = raw && typeof raw === "object" ? raw : {};
+  const entriesByDate = {};
+
+  if (base.entriesByDate && typeof base.entriesByDate === "object") {
+    Object.entries(base.entriesByDate).forEach(([dateKey, day]) => {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+        entriesByDate[dateKey] = normalizeDayEntries(day);
+      }
+    });
+  }
+
+  if (Object.keys(entriesByDate).length === 0) {
+    const fallbackDate = typeof base.lastResetISO === "string" ? base.lastResetISO : todayISO;
+    entriesByDate[fallbackDate] = {
+      breakfast: Array.isArray(base.breakfast) ? base.breakfast : [],
+      lunch: Array.isArray(base.lunch) ? base.lunch : [],
+      dinner: Array.isArray(base.dinner) ? base.dinner : [],
+    };
+  }
+
+  return {
+    entriesByDate,
+    limit: clampCalories(base.limit) || DAILY_LIMIT,
+    lastResetISO: typeof base.lastResetISO === "string" ? base.lastResetISO : todayISO,
+  };
+}
+
 export default function App() {
+  const currentTodayISO = isoDate(new Date());
   const [data, setData] = useState(() => {
     const saved = localStorage.getItem("calorieTrackerPink_v1");
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === "object") return parsed;
+        return normalizeStoredData(JSON.parse(saved));
       } catch {}
     }
-    return {
-      breakfast: [],
-      lunch: [],
-      dinner: [],
-      limit: DAILY_LIMIT,
-      lastResetISO: isoDate(new Date()),
-      weekGoal: {},
-    };
+    return normalizeStoredData(null);
   });
+  const [selectedDateISO, setSelectedDateISO] = useState(currentTodayISO);
 
   const [activeMeal, setActiveMeal] = useState("breakfast");
   const [name, setName] = useState("");
@@ -72,50 +157,59 @@ export default function App() {
     localStorage.setItem("calorieTrackerPink_v1", JSON.stringify(data));
   }, [data]);
 
+  const selectedDayEntries = useMemo(
+    () => normalizeDayEntries(data.entriesByDate?.[selectedDateISO]),
+    [data.entriesByDate, selectedDateISO],
+  );
+
   const totalUsed = useMemo(() => {
     return MEALS.reduce((sum, m) => {
-      const items = data[m.key] || [];
+      const items = selectedDayEntries[m.key] || [];
       return sum + items.reduce((s, it) => s + (Number(it.calories) || 0), 0);
     }, 0);
-  }, [data]);
+  }, [selectedDayEntries]);
 
   const today = new Date();
   const todayISO = isoDate(today);
+  const selectedDate = dateFromISO(selectedDateISO);
+  const isViewingToday = selectedDateISO === todayISO;
   const remaining = (data.limit ?? DAILY_LIMIT) - totalUsed;
-  const todayLabel = today.toLocaleDateString(undefined, {
+  const selectedDateLabel = selectedDate.toLocaleDateString(undefined, {
     weekday: "long",
     month: "long",
     day: "numeric",
     year: "numeric",
   });
   const week = useMemo(() => getCurrentWeek(today), [todayISO]);
+  const monthCells = useMemo(() => getCurrentMonthCells(today), [todayISO]);
+  const weekdayHeaders = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-  useEffect(() => {
-    setData((prev) => {
-      const existing = prev.weekGoal && typeof prev.weekGoal === "object" ? prev.weekGoal : {};
-      const nextWeekGoal = {};
-      let changed = !(prev.weekGoal && typeof prev.weekGoal === "object");
+  function getStatusForDate(dayISO) {
+    if (dayISO === todayISO) {
+      return { statusClass: "today", statusText: "Today" };
+    }
 
-      week.forEach(({ iso }) => {
-        if (existing[iso] === "achieved" || existing[iso] === "not_achieved") {
-          nextWeekGoal[iso] = existing[iso];
-        } else {
-          nextWeekGoal[iso] = "not_achieved";
-          changed = true;
-        }
-      });
+    const dayEntries = normalizeDayEntries(data.entriesByDate?.[dayISO]);
+    const hasEntries = MEALS.some((m) => (dayEntries[m.key] || []).length > 0);
+    if (!hasEntries) {
+      return { statusClass: "noEntry", statusText: "No entry" };
+    }
 
-      if (!changed) {
-        const existingKeys = Object.keys(existing);
-        if (existingKeys.length !== week.length || existingKeys.some((k) => !nextWeekGoal[k])) {
-          changed = true;
-        }
-      }
+    const dayTotal = MEALS.reduce((sum, m) => {
+      const mealItems = dayEntries[m.key] || [];
+      return sum + mealItems.reduce((mealSum, it) => mealSum + (Number(it.calories) || 0), 0);
+    }, 0);
+    const isWithinLimit = dayTotal <= (data.limit ?? DAILY_LIMIT);
 
-      if (!changed) return prev;
-      return { ...prev, weekGoal: nextWeekGoal };
-    });
-  }, [week]);
+    if (isWithinLimit) {
+      return { statusClass: "achieved", statusText: "Achieved" };
+    }
+
+    return {
+      statusClass: "notAchieved",
+      statusText: `Not achieved (over limit: ${dayTotal} kcal)`,
+    };
+  }
 
   function addItem(e) {
     e.preventDefault();
@@ -127,30 +221,49 @@ export default function App() {
 
     const item = { id: uid(), name: trimmed, calories: cals, createdAt: Date.now() };
 
-    setData((prev) => ({
-      ...prev,
-      [activeMeal]: [item, ...(prev[activeMeal] || [])],
-    }));
+    setData((prev) => {
+      const currentDay = normalizeDayEntries(prev.entriesByDate?.[selectedDateISO]);
+      return {
+        ...prev,
+        entriesByDate: {
+          ...(prev.entriesByDate || {}),
+          [selectedDateISO]: {
+            ...currentDay,
+            [activeMeal]: [item, ...(currentDay[activeMeal] || [])],
+          },
+        },
+      };
+    });
 
     setName("");
     setCalories("");
   }
 
   function removeItem(mealKey, id) {
-    setData((prev) => ({
-      ...prev,
-      [mealKey]: (prev[mealKey] || []).filter((it) => it.id !== id),
-    }));
+    setData((prev) => {
+      const currentDay = normalizeDayEntries(prev.entriesByDate?.[selectedDateISO]);
+      return {
+        ...prev,
+        entriesByDate: {
+          ...(prev.entriesByDate || {}),
+          [selectedDateISO]: {
+            ...currentDay,
+            [mealKey]: (currentDay[mealKey] || []).filter((it) => it.id !== id),
+          },
+        },
+      };
+    });
   }
 
   function resetDay() {
     setData((prev) => ({
       ...prev,
-      breakfast: [],
-      lunch: [],
-      dinner: [],
+      entriesByDate: {
+        ...(prev.entriesByDate || {}),
+        [selectedDateISO]: emptyDayEntries(),
+      },
       limit: prev.limit ?? DAILY_LIMIT,
-      lastResetISO: isoDate(new Date()),
+      lastResetISO: selectedDateISO,
     }));
   }
 
@@ -159,17 +272,16 @@ export default function App() {
     setData((prev) => ({ ...prev, limit: n || DAILY_LIMIT }));
   }
 
-  function toggleGoalDay(dayISO) {
-    setData((prev) => {
-      const current = prev.weekGoal?.[dayISO] === "achieved" ? "achieved" : "not_achieved";
-      return {
-        ...prev,
-        weekGoal: {
-          ...(prev.weekGoal || {}),
-          [dayISO]: current === "achieved" ? "not_achieved" : "achieved",
-        },
-      };
-    });
+  function goToToday() {
+    setSelectedDateISO(todayISO);
+  }
+
+  function goToPrevDate() {
+    setSelectedDateISO((prev) => addDays(prev, -1));
+  }
+
+  function goToNextDate() {
+    setSelectedDateISO((prev) => addDays(prev, 1));
   }
 
   return (
@@ -178,7 +290,33 @@ export default function App() {
       <header className="header">
         <div>
           <h1 className="title">Calorie Tracker</h1>
-          <p className="todayDate">{todayLabel}</p>
+          <div className="dateControls">
+            <button
+              type="button"
+              className="dateArrowBtn"
+              onClick={goToPrevDate}
+              aria-label="Previous date"
+            >
+              ←
+            </button>
+            <p className="todayDate">{selectedDateLabel}</p>
+            <button
+              type="button"
+              className="dateArrowBtn"
+              onClick={goToNextDate}
+              aria-label="Next date"
+            >
+              →
+            </button>
+            <button
+              type="button"
+              className="dateTodayBtn"
+              onClick={goToToday}
+              disabled={isViewingToday}
+            >
+              Today
+            </button>
+          </div>
           <p className="subtitle">
             Add ingredients to meals. It subtracts from your daily limit.
           </p>
@@ -212,7 +350,7 @@ export default function App() {
           </div>
 
           <button className="btn ghost" onClick={resetDay}>
-            Reset day
+            Reset selected day
           </button>
           <div className="tiny">
             Last reset: <b>{data.lastResetISO}</b>
@@ -272,7 +410,7 @@ export default function App() {
 
         <section className="mealsGrid">
           {MEALS.map((m) => {
-            const items = data[m.key] || [];
+            const items = selectedDayEntries[m.key] || [];
             const mealTotal = items.reduce((s, it) => s + (Number(it.calories) || 0), 0);
 
             return (
@@ -316,29 +454,72 @@ export default function App() {
           <tbody>
             <tr>
               {week.map((day) => {
-                const isToday = day.iso === todayISO;
-                const isAchieved = data.weekGoal?.[day.iso] === "achieved";
-                const statusClass = isToday ? "today" : isAchieved ? "achieved" : "notAchieved";
-                const statusText = isToday ? "Today" : isAchieved ? "Achieved" : "Not achieved";
+                const isSelected = day.iso === selectedDateISO;
+                const { statusClass, statusText } = getStatusForDate(day.iso);
 
                 return (
-                  <td key={day.iso}>
-                    <div className="weekDay">{day.dayLabel}</div>
+                  <td key={day.iso} className={isSelected ? "isSelectedDay" : ""}>
                     <button
                       type="button"
-                      className={`statusDot ${statusClass}`}
-                      onClick={() => toggleGoalDay(day.iso)}
-                      disabled={isToday}
+                      className="weekCellBtn"
+                      onClick={() => setSelectedDateISO(day.iso)}
                       title={statusText}
-                      aria-label={`${day.fullLabel}: ${statusText}${isToday ? "" : ". Tap to toggle."}`}
-                    />
-                    <div className="weekDate">{day.dayNumber}</div>
+                      aria-label={`${day.fullLabel}: ${statusText}. View this date.`}
+                    >
+                      <div className="weekDay">{day.dayLabel}</div>
+                      <span className={`statusDot ${statusClass}`} aria-hidden="true" />
+                      <div className="weekDate">{day.dayNumber}</div>
+                    </button>
                   </td>
                 );
               })}
             </tr>
           </tbody>
         </table>
+
+        <div className="monthBlock">
+          <h3 className="monthTitle">This Month</h3>
+          <table className="monthTable" aria-label="Monthly goal table">
+            <thead>
+              <tr>
+                {weekdayHeaders.map((label) => (
+                  <th key={label} scope="col">
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: monthCells.length / 7 }, (_, rowIdx) => (
+                <tr key={`month-row-${rowIdx}`}>
+                  {monthCells.slice(rowIdx * 7, rowIdx * 7 + 7).map((day, colIdx) => {
+                    if (!day) {
+                      return <td key={`empty-${rowIdx}-${colIdx}`} className="monthEmpty" />;
+                    }
+
+                    const isSelected = day.iso === selectedDateISO;
+                    const { statusClass, statusText } = getStatusForDate(day.iso);
+
+                    return (
+                      <td key={day.iso} className={isSelected ? "isSelectedDay" : ""}>
+                        <button
+                          type="button"
+                          className="monthCellBtn"
+                          onClick={() => setSelectedDateISO(day.iso)}
+                          title={statusText}
+                          aria-label={`${day.fullLabel}: ${statusText}. View this date.`}
+                        >
+                          <div className="monthDate">{day.dayNumber}</div>
+                          <span className={`statusDot ${statusClass}`} aria-hidden="true" />
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         <div className="weekLegend" aria-label="Status legend">
           <span className="legendItem">
@@ -347,7 +528,11 @@ export default function App() {
           </span>
           <span className="legendItem">
             <span className="legendDot notAchieved" aria-hidden="true" />
-            Not achieved
+            Over limit
+          </span>
+          <span className="legendItem">
+            <span className="legendDot noEntry" aria-hidden="true" />
+            No entry
           </span>
           <span className="legendItem">
             <span className="legendDot today" aria-hidden="true" />
