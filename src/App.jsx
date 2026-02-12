@@ -54,6 +54,16 @@ export default function App() {
   }, [data]);
 
   const remaining = (data.limit ?? DAILY_LIMIT) - totalUsed;
+  const todayLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString(undefined, {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      }),
+    [],
+  );
 
   function addItem(e) {
     e.preventDefault();
@@ -104,6 +114,7 @@ export default function App() {
       <header className="header">
         <div>
           <h1 className="title">Calorie Tracker</h1>
+          <p className="todayDate">{todayLabel}</p>
           <p className="subtitle">
             Add ingredients to meals. It subtracts from your daily limit.
           </p>
@@ -243,4 +254,3 @@ export default function App() {
     </div>
   );
 }
-
