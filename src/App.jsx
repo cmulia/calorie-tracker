@@ -9,6 +9,31 @@ const MEALS = [
   { key: "dinner", label: "Dinner" },
 ];
 
+function isoDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function getCurrentWeek(baseDate) {
+  const start = new Date(baseDate);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - start.getDay());
+
+  return Array.from({ length: 7 }, (_, idx) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + idx);
+    return {
+      iso: isoDate(d),
+      dayLabel: d.toLocaleDateString(undefined, { weekday: "short" }),
+      dayNumber: d.getDate(),
+      fullLabel: d.toLocaleDateString(undefined, {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      }),
+    };
+  });
+}
+
 function uid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
 }
@@ -33,7 +58,8 @@ export default function App() {
       lunch: [],
       dinner: [],
       limit: DAILY_LIMIT,
-      lastResetISO: new Date().toISOString().slice(0, 10),
+      lastResetISO: isoDate(new Date()),
+      weekGoal: {},
     };
   });
 
@@ -53,17 +79,43 @@ export default function App() {
     }, 0);
   }, [data]);
 
+  const today = new Date();
+  const todayISO = isoDate(today);
   const remaining = (data.limit ?? DAILY_LIMIT) - totalUsed;
-  const todayLabel = useMemo(
-    () =>
-      new Date().toLocaleDateString(undefined, {
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      }),
-    [],
-  );
+  const todayLabel = today.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+  const week = useMemo(() => getCurrentWeek(today), [todayISO]);
+
+  useEffect(() => {
+    setData((prev) => {
+      const existing = prev.weekGoal && typeof prev.weekGoal === "object" ? prev.weekGoal : {};
+      const nextWeekGoal = {};
+      let changed = !(prev.weekGoal && typeof prev.weekGoal === "object");
+
+      week.forEach(({ iso }) => {
+        if (existing[iso] === "achieved" || existing[iso] === "not_achieved") {
+          nextWeekGoal[iso] = existing[iso];
+        } else {
+          nextWeekGoal[iso] = "not_achieved";
+          changed = true;
+        }
+      });
+
+      if (!changed) {
+        const existingKeys = Object.keys(existing);
+        if (existingKeys.length !== week.length || existingKeys.some((k) => !nextWeekGoal[k])) {
+          changed = true;
+        }
+      }
+
+      if (!changed) return prev;
+      return { ...prev, weekGoal: nextWeekGoal };
+    });
+  }, [week]);
 
   function addItem(e) {
     e.preventDefault();
@@ -92,20 +144,32 @@ export default function App() {
   }
 
   function resetDay() {
-    const today = new Date().toISOString().slice(0, 10);
     setData((prev) => ({
       ...prev,
       breakfast: [],
       lunch: [],
       dinner: [],
       limit: prev.limit ?? DAILY_LIMIT,
-      lastResetISO: today,
+      lastResetISO: isoDate(new Date()),
     }));
   }
 
   function setLimit(v) {
     const n = clampCalories(v);
     setData((prev) => ({ ...prev, limit: n || DAILY_LIMIT }));
+  }
+
+  function toggleGoalDay(dayISO) {
+    setData((prev) => {
+      const current = prev.weekGoal?.[dayISO] === "achieved" ? "achieved" : "not_achieved";
+      return {
+        ...prev,
+        weekGoal: {
+          ...(prev.weekGoal || {}),
+          [dayISO]: current === "achieved" ? "not_achieved" : "achieved",
+        },
+      };
+    });
   }
 
   return (
@@ -245,6 +309,52 @@ export default function App() {
           })}
         </section>
       </main>
+
+      <section className="card weekMemory">
+        <h2 className="cardTitle">This Week Goal Memory</h2>
+        <table className="weekTable" aria-label="Weekly goal table">
+          <tbody>
+            <tr>
+              {week.map((day) => {
+                const isToday = day.iso === todayISO;
+                const isAchieved = data.weekGoal?.[day.iso] === "achieved";
+                const statusClass = isToday ? "today" : isAchieved ? "achieved" : "notAchieved";
+                const statusText = isToday ? "Today" : isAchieved ? "Achieved" : "Not achieved";
+
+                return (
+                  <td key={day.iso}>
+                    <div className="weekDay">{day.dayLabel}</div>
+                    <button
+                      type="button"
+                      className={`statusDot ${statusClass}`}
+                      onClick={() => toggleGoalDay(day.iso)}
+                      disabled={isToday}
+                      title={statusText}
+                      aria-label={`${day.fullLabel}: ${statusText}${isToday ? "" : ". Tap to toggle."}`}
+                    />
+                    <div className="weekDate">{day.dayNumber}</div>
+                  </td>
+                );
+              })}
+            </tr>
+          </tbody>
+        </table>
+
+        <div className="weekLegend" aria-label="Status legend">
+          <span className="legendItem">
+            <span className="legendDot achieved" aria-hidden="true" />
+            Achieved
+          </span>
+          <span className="legendItem">
+            <span className="legendDot notAchieved" aria-hidden="true" />
+            Not achieved
+          </span>
+          <span className="legendItem">
+            <span className="legendDot today" aria-hidden="true" />
+            Today
+          </span>
+        </div>
+      </section>
 
       <footer className="footer">
         <span>
