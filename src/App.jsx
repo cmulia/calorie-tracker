@@ -157,6 +157,7 @@ export default function App() {
   const [aiNote, setAiNote] = useState("");
   const [aiError, setAiError] = useState("");
   const [typedAiText, setTypedAiText] = useState("");
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const aiMessage = aiError || aiNote;
 
   // Auto-save
@@ -295,6 +296,19 @@ export default function App() {
     }));
   }
 
+  function openResetDialog() {
+    setIsResetDialogOpen(true);
+  }
+
+  function cancelResetDay() {
+    setIsResetDialogOpen(false);
+  }
+
+  function confirmResetDay() {
+    resetDay();
+    setIsResetDialogOpen(false);
+  }
+
   function setLimit(v) {
     const n = clampCalories(v);
     setData((prev) => ({ ...prev, limit: n || DAILY_LIMIT }));
@@ -364,7 +378,7 @@ export default function App() {
       <div className="bgGlow" aria-hidden="true" />
       <header className="header">
         <div>
-          <h1 className="title">Calorie Tracker</h1>
+          <h1 className="title">Baobao's Calorie Tracker</h1>
           <div className="dateControls">
             <button
               type="button"
@@ -424,7 +438,7 @@ export default function App() {
             </span>
           </div>
 
-          <button className="btn ghost" onClick={resetDay}>
+          <button className="btn ghost" onClick={openResetDialog}>
             Reset selected day
           </button>
           <div className="tiny">
@@ -642,6 +656,29 @@ export default function App() {
           Saves automatically in your browser. Works offline after the first load.
         </span>
       </footer>
+
+      {isResetDialogOpen ? (
+        <div className="dialogOverlay" role="presentation" onClick={cancelResetDay}>
+          <div
+            className="dialogCard"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reset-dialog-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="reset-dialog-title" className="dialogTitle">Reset selected day?</h2>
+            <p className="dialogText">This will remove all meal entries for {selectedDateLabel}.</p>
+            <div className="dialogActions">
+              <button type="button" className="btn ghost dialogBtn" onClick={cancelResetDay}>
+                Cancel
+              </button>
+              <button type="button" className="btn primary dialogBtn" onClick={confirmResetDay}>
+                Yes, reset
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

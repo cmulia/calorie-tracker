@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap");
+
 :root {
   --bg: #fff6fb;
   --card: rgba(255, 255, 255, 0.75);
@@ -65,6 +67,7 @@ body {
   line-height: 1.22;
   letter-spacing: -0.02em;
   overflow-wrap: anywhere;
+  font-family: "Fredoka", "Trebuchet MS", "Comic Sans MS", cursive;
 }
 
 .dateControls {
@@ -687,4 +690,72 @@ body {
   color: var(--muted);
   font-size: 12px;
   position: relative;
+}
+
+.dialogOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(52, 8, 12, 0.38);
+  backdrop-filter: blur(3px);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  z-index: 40;
+  animation: dialogOverlayIn 180ms ease-out;
+}
+
+.dialogCard {
+  width: min(420px, 100%);
+  border-radius: 18px;
+  border: 1px solid rgba(220, 38, 38, 0.34);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 20px 68px rgba(185, 28, 28, 0.28);
+  padding: 16px;
+  animation: dialogPopInRed 260ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.dialogTitle {
+  margin: 0;
+  font-size: 20px;
+}
+
+.dialogText {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.dialogActions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.dialogBtn {
+  width: auto;
+  margin-top: 0;
+}
+
+@keyframes dialogOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dialogPopInRed {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.94);
+    box-shadow: 0 0 0 rgba(185, 28, 28, 0);
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 22px 72px rgba(185, 28, 28, 0.34);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    box-shadow: 0 20px 68px rgba(185, 28, 28, 0.28);
+  }
 }
