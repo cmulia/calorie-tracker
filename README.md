@@ -1,7 +1,7 @@
 # Calorie Tracker
 
-A React + Vite calorie tracker with:
+made with react
 
 - Daily meal logging by date
-- Weekly and monthly status dots
-- AI calorie suggestion from ingredient text
+- Weekly and monthly status
+- Calorie suggestion from ingredient with o4-mini
