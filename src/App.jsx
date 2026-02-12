@@ -721,11 +721,11 @@ export default function App() {
               Made by Chris Mulia ·{" "}
               <a
                 className="madeByLink"
-                href="https://chrismulia.github.io"
+                href="https://cmulia.github.io/"
                 target="_blank"
                 rel="noreferrer"
               >
-                chrismulia.github.io
+                cmulia.github.io
               </a>
             </p>
             <div className="dialogActions">
