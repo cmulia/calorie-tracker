@@ -158,6 +158,7 @@ export default function App() {
   const [aiError, setAiError] = useState("");
   const [typedAiText, setTypedAiText] = useState("");
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
   const aiMessage = aiError || aiNote;
 
   // Auto-save
@@ -373,12 +374,31 @@ export default function App() {
     setSelectedDateISO((prev) => addDays(prev, 1));
   }
 
+  function openHelpDialog() {
+    setIsHelpDialogOpen(true);
+  }
+
+  function closeHelpDialog() {
+    setIsHelpDialogOpen(false);
+  }
+
   return (
     <div className="page">
       <div className="bgGlow" aria-hidden="true" />
       <header className="header">
         <div>
-          <h1 className="title">Baobao's Calorie Tracker ❤️</h1>
+          <div className="titleRow">
+            <h1 className="title">Baobao's Calorie Tracker ❤️</h1>
+            <button
+              type="button"
+              className="helpBtn"
+              onClick={openHelpDialog}
+              aria-label="How to use this website"
+              title="How to use"
+            >
+              ?
+            </button>
+          </div>
           <div className="dateControls">
             <button
               type="button"
@@ -674,6 +694,43 @@ export default function App() {
               </button>
               <button type="button" className="btn primary dialogBtn" onClick={confirmResetDay}>
                 Yes, reset
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isHelpDialogOpen ? (
+        <div className="dialogOverlay" role="presentation" onClick={closeHelpDialog}>
+          <div
+            className="dialogCard"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="help-dialog-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="help-dialog-title" className="dialogTitle">How to use this website</h2>
+            <ol className="helpSteps">
+              <li>Pick a date and meal (Breakfast, Lunch, or Dinner).</li>
+              <li>Type an ingredient, then press Analyse to get an AI calorie suggestion.</li>
+              <li>Adjust calories if needed, then press Add.</li>
+              <li>Track your Used and Remaining calories in the top card.</li>
+              <li>Use week/month dots to review progress by date.</li>
+            </ol>
+            <p className="madeBy">
+              Made by Chris Mulia ·{" "}
+              <a
+                className="madeByLink"
+                href="https://chrismulia.github.io"
+                target="_blank"
+                rel="noreferrer"
+              >
+                chrismulia.github.io
+              </a>
+            </p>
+            <div className="dialogActions">
+              <button type="button" className="btn primary dialogBtn" onClick={closeHelpDialog}>
+                Got it
               </button>
             </div>
           </div>
