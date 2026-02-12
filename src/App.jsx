@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
+
 const DAILY_LIMIT = 1200;
 
 const MEALS = [
@@ -151,11 +152,37 @@ export default function App() {
   const [activeMeal, setActiveMeal] = useState("breakfast");
   const [name, setName] = useState("");
   const [calories, setCalories] = useState("");
+  const [isSuggestedCalories, setIsSuggestedCalories] = useState(false);
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [aiNote, setAiNote] = useState("");
+  const [aiError, setAiError] = useState("");
+  const [typedAiText, setTypedAiText] = useState("");
+  const aiMessage = aiError || aiNote;
 
   // Auto-save
   useEffect(() => {
     localStorage.setItem("calorieTrackerPink_v1", JSON.stringify(data));
   }, [data]);
+
+  useEffect(() => {
+    if (!aiMessage) {
+      setTypedAiText("");
+      return undefined;
+    }
+
+    let idx = 0;
+    setTypedAiText("");
+
+    const timer = setInterval(() => {
+      idx += 1;
+      setTypedAiText(aiMessage.slice(0, idx));
+      if (idx >= aiMessage.length) {
+        clearInterval(timer);
+      }
+    }, 18);
+
+    return () => clearInterval(timer);
+  }, [aiMessage]);
 
   const selectedDayEntries = useMemo(
     () => normalizeDayEntries(data.entriesByDate?.[selectedDateISO]),
@@ -237,6 +264,7 @@ export default function App() {
 
     setName("");
     setCalories("");
+    setIsSuggestedCalories(false);
   }
 
   function removeItem(mealKey, id) {
@@ -270,6 +298,53 @@ export default function App() {
   function setLimit(v) {
     const n = clampCalories(v);
     setData((prev) => ({ ...prev, limit: n || DAILY_LIMIT }));
+  }
+
+  async function suggestCalories() {
+    const ingredientText = name.trim();
+    if (!ingredientText) return;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+    setIsSuggesting(true);
+    setAiError("");
+    setAiNote("");
+
+    try {
+      const r = await fetch("/api/suggest-calories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: ingredientText }),
+        signal: controller.signal,
+      });
+
+      let res = {};
+      try {
+        res = await r.json();
+      } catch {}
+
+      if (!r.ok) {
+        throw new Error(res?.error || "Request failed");
+      }
+
+      const suggestedCalories = Number(res.calories);
+      setCalories(Number.isFinite(suggestedCalories) ? String(Math.max(0, Math.round(suggestedCalories))) : "");
+      setIsSuggestedCalories(true);
+      setAiNote(res.notes || "");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setAiError("Suggestion timed out. Please try again.");
+        return;
+      }
+      setAiError(
+        error instanceof Error && error.message
+          ? error.message
+          : "Could not get a suggestion. Check your API key + redeploy."
+      );
+    } finally {
+      clearTimeout(timeoutId);
+      setIsSuggesting(false);
+    }
   }
 
   function goToToday() {
@@ -379,33 +454,54 @@ export default function App() {
           <form className="form" onSubmit={addItem}>
             <label className="field">
               <span className="label">Ingredient</span>
-              <input
-                className="input"
-                placeholder="e.g. 2 eggs"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
+              <div className="ingredientControlRow">
+                <input
+                  className="input"
+                  placeholder="e.g. 2 eggs"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="btn ghost analyseBtn"
+                  onClick={suggestCalories}
+                  disabled={isSuggesting || !name.trim()}
+                >
+                  {isSuggesting ? "Thinking..." : "Analyse"}
+                </button>
+              </div>
             </label>
 
-            <label className="field">
+            <label className="field caloriesField">
               <span className="label">Calories (kcal)</span>
               <input
-                className="input"
+                className={isSuggestedCalories ? "input suggestedInput" : "input"}
                 inputMode="numeric"
                 placeholder="e.g. 140"
                 value={calories}
-                onChange={(e) => setCalories(e.target.value)}
+                onChange={(e) => {
+                  setCalories(e.target.value);
+                  setIsSuggestedCalories(false);
+                }}
               />
             </label>
 
             <button className="btn primary" type="submit">
               Add
             </button>
+            {isSuggesting || aiNote || aiError ? (
+              <div className={isSuggesting ? "aiBox thinking" : "aiBox"} role="status" aria-live="polite">
+                <div className="aiBoxTitle">AI Says</div>
+                <div
+                  className={`${aiError ? "aiBoxText error" : "aiBoxText"} ${
+                    typedAiText.length < aiMessage.length ? "typing" : ""
+                  }`}
+                >
+                  {isSuggesting ? "Thinking..." : typedAiText}
+                </div>
+              </div>
+            ) : null}
           </form>
-
-          <p className="hint">
-            Tip: If you go negative, you’re over your daily limit.
-          </p>
         </section>
 
         <section className="mealsGrid">
